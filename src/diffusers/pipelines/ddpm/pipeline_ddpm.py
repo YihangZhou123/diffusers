@@ -1,3 +1,6 @@
+%%writefile /content/diffusers/src/diffusers/pipelines/ddpm/pipeline_ddpm.py
+
+
 # Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,11 +17,12 @@
 
 
 from typing import List, Optional, Tuple, Union
+import sys
 
 import torch
-
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -50,6 +54,7 @@ class DDPMPipeline(DiffusionPipeline):
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        mask: Optional[torch.Tensor] = None,  # 将mask设置为可选参数
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         The call function to the pipeline for generation.
@@ -89,29 +94,40 @@ class DDPMPipeline(DiffusionPipeline):
                 returned where the first element is a list with the generated images
         """
         # Sample gaussian noise to begin loop
+
+        input_channels = self.unet.config.in_channels - 1
+
         if isinstance(self.unet.config.sample_size, int):
             image_shape = (
                 batch_size,
-                self.unet.config.in_channels,
+                input_channels,
                 self.unet.config.sample_size,
                 self.unet.config.sample_size,
             )
         else:
-            image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
+            image_shape = (batch_size, input_channels, *self.unet.config.sample_size)
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
             image = randn_tensor(image_shape, generator=generator)
+            # image = torch.cat((image, mask), dim=1)
             image = image.to(self.device)
         else:
             image = randn_tensor(image_shape, generator=generator, device=self.device)
+            # image = torch.cat((image, mask), dim=1)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
-            model_output = self.unet(image, t).sample
+            if mask is not None:
+                model_input = torch.cat((image, mask), dim=1)  # 假设mask与image具有兼容的形状
+            else:
+                model_input = image
+            model_output = self.unet(model_input, t).sample
+            # print(model_output.shape)
+            # model_output = torch.cat((model_output, mask), dim=1)
 
             # 2. compute previous image: x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
