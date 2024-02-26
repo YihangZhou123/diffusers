@@ -1,5 +1,3 @@
-%%writefile /content/diffusers/src/diffusers/pipelines/ddpm/pipeline_ddpm.py
-
 
 # Copyright 2024 The HuggingFace Team. All rights reserved.
 #
