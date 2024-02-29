@@ -826,7 +826,7 @@ class UNetModel(nn.Module, ModelMixin, ConfigMixin):
             h = th.cat([h, hs.pop()], dim=1)
             h = module(h, y, emb)
         h = h.type(x.dtype)
-        return return UNet2DOutput(sample=self.out(h))
+        return UNet2DOutput(sample=self.out(h))
 
 
 class SuperResModel(UNetModel):
