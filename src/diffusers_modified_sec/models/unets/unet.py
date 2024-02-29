@@ -596,7 +596,7 @@ class UNetModel(ModelMixin, ConfigMixin):
         dims=2,
         num_classes=None,
         use_checkpoint=False,
-        dtype=th.float16
+        dtype=th.float16,
         use_fp16=False,
         num_heads=1,
         num_head_channels=-1,
