@@ -551,7 +551,7 @@ class QKVAttention(nn.Module):
         return count_flops_attn(model, _x, y)
 
 
-class UNetModel(nn.Module, ModelMixin, ConfigMixin):
+class UNetModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding.
 
