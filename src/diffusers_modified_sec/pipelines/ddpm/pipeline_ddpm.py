@@ -93,17 +93,17 @@ class DDPMPipeline(DiffusionPipeline):
         """
         # Sample gaussian noise to begin loop
 
-        input_channels = self.unet.config.in_channels - 1
+        # input_channels = self.unet.config.in_channels - 1
 
         if isinstance(self.unet.config.sample_size, int):
             image_shape = (
                 batch_size,
-                input_channels,
+                self.unet.config.in_channels,
                 self.unet.config.sample_size,
                 self.unet.config.sample_size,
             )
         else:
-            image_shape = (batch_size, input_channels, *self.unet.config.sample_size)
+            image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
@@ -119,11 +119,7 @@ class DDPMPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
-            if mask is not None:
-                model_input = torch.cat((image, mask), dim=1)  # 假设mask与image具有兼容的形状
-            else:
-                model_input = image
-            model_output = self.unet(model_input, t).sample
+            model_output = self.unet(image, t, mask)
             # print(model_output.shape)
             # model_output = torch.cat((model_output, mask), dim=1)
 
