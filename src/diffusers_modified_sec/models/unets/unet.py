@@ -7,6 +7,11 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import BaseOutput
+from ..modeling_utils import ModelMixin
+from typing import Optional, Tuple, Union
+from dataclasses import dataclass
+
 from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from .nn import (
     SiLU,
@@ -18,6 +23,19 @@ from .nn import (
     normalization,
     timestep_embedding,
 )
+
+@dataclass
+class UNet2DOutput(BaseOutput):
+    """
+    The output of [`UNet2DModel`].
+
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            The hidden states output from the last layer of the model.
+    """
+
+    sample: th.FloatTensor
+
 
 
 class AttentionPool2d(nn.Module):
@@ -566,7 +584,7 @@ class UNetModel(nn.Module, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        image_size,
+        sample_size,
         in_channels,
         model_channels,
         out_channels,
@@ -591,7 +609,7 @@ class UNetModel(nn.Module, ConfigMixin):
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
 
-        self.image_size = image_size
+        self.sample_size = sample_size
         self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
@@ -768,19 +786,30 @@ class UNetModel(nn.Module, ConfigMixin):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, y=None):
-        """
-        Apply the model to an input batch.
 
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: an [N x C x ...] Tensor of outputs.
-        """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+    def forward(
+        self,
+        x: th.FloatTensor,
+        timesteps: Union[th.Tensor, float, int],
+        y
+    ) -> Union[UNet2DOutput, Tuple]:
+        r"""
+        The [`UNet2DModel`] forward method.
 
+        Args:
+            sample (`torch.FloatTensor`):
+                The noisy input tensor with the following shape `(batch, channel, height, width)`.
+            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+            class_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is the sample tensor.
+        """
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
@@ -807,8 +836,8 @@ class SuperResModel(UNetModel):
     Expects an extra kwarg `low_res` to condition on a low-resolution image.
     """
 
-    def __init__(self, image_size, in_channels, *args, **kwargs):
-        super().__init__(image_size, in_channels * 2, *args, **kwargs)
+    def __init__(self, sample_size, in_channels, *args, **kwargs):
+        super().__init__(sample_size, in_channels * 2, *args, **kwargs)
 
     def forward(self, x, cond, timesteps, low_res=None, **kwargs):
         _, _, new_height, new_width = x.shape
@@ -826,7 +855,7 @@ class EncoderUNetModel(nn.Module):
 
     def __init__(
         self,
-        image_size,
+        sample_size,
         in_channels,
         model_channels,
         out_channels,
@@ -967,7 +996,7 @@ class EncoderUNetModel(nn.Module):
             self.out = nn.Sequential(
                 normalization(ch),
                 SiLU(),
-                AttentionPool2d((image_size // ds), ch, num_head_channels, out_channels),
+                AttentionPool2d((sample_size // ds), ch, num_head_channels, out_channels),
             )
         elif pool == "spatial":
             self.out = nn.Sequential(
